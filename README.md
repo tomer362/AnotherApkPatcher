@@ -1,18 +1,106 @@
 # AnotherApkPatcher
 
-A comprehensive Python tool for decompiling, modifying, and re-signing Android APK files. This tool automates the entire APK reverse engineering workflow with support for automated file patching or interactive modification.
+A comprehensive Python toolkit for APK reverse engineering with automated tool installation and APK merging capabilities.
 
 ## Features
 
-- **Full APK Processing Pipeline**: Decompile, modify, recompile, align, and sign APKs
-- **Flexible Patching Options**: 
-  - Interactive mode for manual file modifications
-  - Automated JSON-based file patching
-- **Secure Key Management**: Generate new keystores or use existing ones
-- **Clean Workflow**: Automatic cleanup of temporary files
-- **Comprehensive Logging**: Detailed console and file-based logging
-- **Error Handling**: Robust error handling with proper cleanup
+- **Full APK Processing**: Decompile, modify, recompile, align, and sign APKs
+- **Automated Tool Installation**: Downloads and configures all required Android tools
+- **Flexible Patching**: Interactive mode or JSON-based automated file patching
+- **APK Merging**: Merge base APK with multiple unsigned APKs using APKEditor
+- **Clean Workflow**: Automatic temporary file cleanup and detailed logging
 
+## Prerequisites
+
+- **Java Development Kit (JDK)** 8+
+- **Python 3.6+**
+
+## Installation
+
+```bash
+git clone --recursive https://github.com/yourusername/AnotherApkPatcher.git
+cd AnotherApkPatcher
+pip install toml
+```
+
+## Quick Start
+
+### Process and Sign an APK
+
+```bash
+# Basic usage with automatic tool download
+python patcher.py app.apk --download-tools
+
+# With automated file patches
+python patcher.py app.apk --apk-file-patches patches.json --download-tools
+```
+
+### Merge APKs
+
+```bash
+# Merge base APK with multiple unsigned APKs
+python merger.py base.apk unsigned1.apk unsigned2.apk -o merged.apk
+
+# Build APKEditor and merge
+python merger.py base.apk unsigned.apk --build
+```
+
+## Main Patcher Usage
+
+```bash
+python patcher.py app.apk [OPTIONS]
+
+Options:
+  --tools-dir DIR          Tools directory (default: ./tools)
+  --download-tools         Auto-download missing tools
+  --apk-file-patches FILE  JSON patches file (default: apk_file_patches.json)
+  --interactive            Interactive file modification
+  --merge-with APK...      APKs to merge using APKEditor
+  --build-apkeditor        Build APKEditor from source
+  --keystore FILE          Use existing keystore
+  --output FILE            Output APK path
+```
+
+## JSON Patches Format
+
+Create `apk_file_patches.json`:
+
+```json
+{
+  "patch": [
+    {
+      "src": "/path/to/local/file.txt",
+      "dest": "assets/file.txt"
+    }
+  ]
+}
+```
+
+## APK Merger Usage
+
+```bash
+python merger.py base.apk unsigned1.apk [unsigned2.apk...] [OPTIONS]
+
+Options:
+  -o, --output FILE        Output APK path
+  --build                  Build APKEditor from source
+  --verbose                Enable verbose logging
+```
+
+## Building APKEditor
+
+```bash
+# Unix/Linux/macOS
+./build-apkeditor.sh
+
+# Windows
+build-apkeditor.bat
+```
+
+## License
+
+MIT License - See [LICENSE](LICENSE) file.
+```
 ## Prerequisites
 
 Before using AnotherApkPatcher, ensure you have the following tools installed:
