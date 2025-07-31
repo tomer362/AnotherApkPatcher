@@ -1,4 +1,3 @@
-# patcher.py
 import argparse
 import logging
 import os
@@ -47,13 +46,36 @@ DEFAULT_KEYSTORE = "release.keystore"
 KEY_DNAME = "CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown"
 DEFAULT_PATCHES_FILE = "apk_file_patches.json"
 APKTOOL_DOWNLOAD_URL = "https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar"
+DEFAULT_ANDROID_VERSION = "34"
+DEFAULT_SDK_ROOT = str(Path.home() / "android-sdk")
+APKEDITOR_JAR_DEFAULT = "libs/APKEditor/APKEditor.jar"
+DEFAULT_MERGED_APK_NAME = "merged_apk.apk"
+KEYTOOL_CMD = "keytool"
+JAVA_CMD = "java"
+APKTOOL_DECODE_CMD = "decode"
+APKTOOL_BUILD_CMD = "build"
+ZIPALIGN_FLAGS = ["-f", "-v", "4"]
+APKSIGNER_SIGN_CMD = "sign"
+KEYSTORE_VALIDITY = "10000"
+KEY_ALGORITHM = "RSA"
+KEY_SIZE = "2048"
+MERGE_CMD = "merge"
+INPUT_FLAG = "-i"
+UNSIGNED_FLAG = "-u"
+OUTPUT_FLAG = "-o"
+GRADLEW_UNIX = "gradlew"
+GRADLEW_WIN = "gradlew.bat"
+APKEDITOR_BUILD_DIR = "app/build/libs"
+APKEDITOR_SOURCE_DIR = "libs/APKEditor"
+EXAMPLE_SRC_PATH = "path/to/your/local/file.txt"
+EXAMPLE_DEST_PATH = "assets/file.txt"
 
 # Example JSON content
 EXAMPLE_JSON_CONTENT = {
     "patch": [
         {
-            "src": "path/to/your/local/file.txt",
-            "dest": "assets/file.txt"
+            "src": EXAMPLE_SRC_PATH,
+            "dest": EXAMPLE_DEST_PATH
         }
     ]
 }
@@ -102,19 +124,19 @@ def run_command(cmd: list, cwd: str = None, input_ str = None) -> subprocess.Com
 def decompile_apk(apk_path: str, output_dir: str, apktool_path: str) -> None:
     """Decompile the APK using apktool"""
     logging.info(f"Decompiling APK: {apk_path}")
-    cmd = ["java", "-jar", apktool_path, "decode", apk_path, "-o", output_dir]
+    cmd = [JAVA_CMD, "-jar", apktool_path, APKTOOL_DECODE_CMD, apk_path, "-o", output_dir]
     run_command(cmd)
 
 def compile_apk(decompiled_dir: str, output_apk: str, apktool_path: str) -> None:
     """Compile the modified sources back to APK"""
     logging.info(f"Compiling APK to: {output_apk}")
-    cmd = ["java", "-jar", apktool_path, "build", decompiled_dir, "-o", output_apk]
+    cmd = [JAVA_CMD, "-jar", apktool_path, APKTOOL_BUILD_CMD, decompiled_dir, "-o", output_apk]
     run_command(cmd)
 
 def align_apk(input_apk: str, output_apk: str, zipalign_path: str) -> None:
     """Align the APK using zipalign"""
     logging.info(f"Aligning APK: {input_apk}")
-    cmd = [zipalign_path, "-f", "-v", "4", input_apk, output_apk]
+    cmd = [zipalign_path] + ZIPALIGN_FLAGS + [input_apk, output_apk]
     run_command(cmd)
 
 def generate_key(keystore_path: str, alias: str, password: str, keytool_path: str) -> None:
@@ -130,9 +152,9 @@ def generate_key(keystore_path: str, alias: str, password: str, keytool_path: st
         "-v",
         "-keystore", keystore_path,
         "-alias", alias,
-        "-keyalg", "RSA",
-        "-keysize", "2048",
-        "-validity", "10000",
+        "-keyalg", KEY_ALGORITHM,
+        "-keysize", KEY_SIZE,
+        "-validity", KEYSTORE_VALIDITY,
         "-storepass", password,
         "-keypass", password,
         "-dname", KEY_DNAME
@@ -144,8 +166,8 @@ def sign_apk(apk_path: str, keystore_path: str, alias: str, password: str, apksi
     """Sign the APK using apksigner"""
     logging.info(f"Signing APK: {apk_path}")
     cmd = [
-        "java", "-jar", apksigner_path,
-        "sign",
+        JAVA_CMD, "-jar", apksigner_path,
+        APKSIGNER_SIGN_CMD,
         "--ks", keystore_path,
         "--ks-key-alias", alias,
         "--ks-pass", f"pass:{password}",
@@ -275,10 +297,10 @@ def ensure_tools_available(tools_dir: Path, download_tools: bool = False,
         setup_sdk_logging()
         
         # Install SDK tools
-        sdk_root_path = Path(sdk_root) if sdk_root else Path.home() / "android-sdk"
+        sdk_root_path = Path(sdk_root) if sdk_root else Path(DEFAULT_SDK_ROOT)
         success = install_sdk_tools(
             sdk_root=sdk_root_path,
-            android_version=android_version or "34",  # Default to Android 14
+            android_version=android_version or DEFAULT_ANDROID_VERSION,
             tools_dir=tools_dir,
             keep_cmdline=True
         )
@@ -325,15 +347,15 @@ def main():
     parser.add_argument("--download-tools", action="store_true", 
                        help="Automatically download missing tools")
     parser.add_argument("--sdk-root", 
-                       help="Android SDK root directory for tool installation")
-    parser.add_argument("--android-version", default="34",
-                       help="Android API version for build tools (default: 34)")
+                       help=f"Android SDK root directory for tool installation (default: {DEFAULT_SDK_ROOT})")
+    parser.add_argument("--android-version", default=DEFAULT_ANDROID_VERSION,
+                       help=f"Android API version for build tools (default: {DEFAULT_ANDROID_VERSION})")
     
     # APKEditor merge options
     parser.add_argument("--merge-with", nargs="+",
                        help="APKs to merge with using APKEditor (unsigned APKs)")
     parser.add_argument("--apkeditor-jar", 
-                       help="Path to APKEditor JAR file")
+                       help=f"Path to APKEditor JAR file (default: {APKEDITOR_JAR_DEFAULT})")
     parser.add_argument("--build-apkeditor", action="store_true",
                        help="Build APKEditor from source")
     
@@ -358,8 +380,8 @@ def main():
         # Perform merge using APKEditor
         base_apk = args.apk_path
         unsigned_apks = args.merge_with
-        output_apk = args.output or f"{Path(base_apk).stem}_merged.apk"
-        apkeditor_jar = args.apkeditor_jar or "libs/APKEditor/APKEditor.jar"
+        output_apk = args.output or f"{Path(base_apk).stem}_{DEFAULT_MERGED_APK_NAME}"
+        apkeditor_jar = args.apkeditor_jar or APKEDITOR_JAR_DEFAULT
         
         logging.info("Merging APKs using APKEditor...")
         success = merge_apks(
@@ -457,7 +479,7 @@ def main():
         
         # 5. Generate key if needed
         if generate_new_key:
-            generate_key(str(keystore_path), args.alias, args.password, "keytool")
+            generate_key(str(keystore_path), args.alias, args.password, KEYTOOL_CMD)
         
         # 6. Sign APK
         sign_apk(str(aligned_apk), str(keystore_path), args.alias, args.password, str(apksigner_path))
