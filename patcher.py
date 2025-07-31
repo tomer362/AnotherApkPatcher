@@ -1,4 +1,3 @@
-# patcher.py
 import argparse
 import logging
 import os
@@ -107,7 +106,7 @@ def download_file(url: str, destination: Path) -> bool:
         logging.error(f"Failed to download file: {e}")
         return False
 
-def run_command(cmd: list, cwd: str = None, input_ str = None) -> subprocess.CompletedProcess:
+def run_command(cmd: list, cwd: str = None, input_data: str = None) -> subprocess.CompletedProcess:
     """Run a shell command and return the result"""
     logging.info(f"Running command: {' '.join(cmd)}")
     try:
@@ -523,4 +522,62 @@ def main():
             generate_new_key = False
         else:
             keystore_path = temp_dir / DEFAULT_KEYSTORE
+            generate_new_key = True
+        
+        # Process steps
+        logging.info("Starting APK processing...")
+        
+        # 1. Decompile APK
+        decompile_apk(str(args.apk_path), str(decompiled_dir), apktool_path)
+        
+        # 2. Apply patches based on selected mode
+        if args.interactive:
+            interactive_file_modification(str(decompiled_dir))
+        else:
+            # Default to JSON patches
+            patches_file = Path(args.apk_file_patches)
+            if patches_file.exists():
+                patches = load_patches_from_json(patches_file)
+                apply_file_patches(str(decompiled_dir), patches)
+            else:
+                # Create example file if it doesn't exist
+                logging.warning(f"APK file patches file not found: {patches_file}")
+                create_example_patches_file(patches_file)
+                print(f"Created example patches file: {patches_file}")
+                print("Please edit this file to add your patches, then run the command again.")
+                print("Or use --interactive mode to manually modify files.")
+                return 1
+        
+        # 3. Compile modified APK
+        compile_apk(str(decompiled_dir), str(unaligned_apk), apktool_path)
+        
+        # 4. Align APK
+        align_apk(str(unaligned_apk), str(aligned_apk), zipalign_path)
+        
+        # 5. Generate key if needed
+        if generate_new_key:
+            generate_key(str(keystore_path), args.alias, args.password, KEYTOOL_CMD)
+        
+        # 6. Sign APK
+        sign_apk(str(aligned_apk), str(keystore_path), args.alias, args.password, apksigner_path)
+        
+        # 7. Move final APK to output location
+        shutil.move(str(aligned_apk), str(output_apk))
+        logging.info(f"Signed APK created at: {output_apk}")
+        
+        # 8. Install APK on device if requested
+        if args.install or args.install_on_device:
+            install_apk_on_device(str(output_apk), args.install_on_device)
+        
+    except Exception as e:
+        logging.error(f"Processing failed: {str(e)}")
+        return_code = 1
+    finally:
+        # Cleanup temporary files
+        logging.info("Cleaning up temporary files...")
+        cleanup_temp_files(str(temp_dir))
     
+    return return_code
+
+if __name__ == "__main__":
+    sys.exit(main())
