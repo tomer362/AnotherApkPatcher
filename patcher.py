@@ -1,3 +1,4 @@
+# patcher.py
 import argparse
 import logging
 import os
@@ -7,7 +8,7 @@ import sys
 import tempfile
 import json
 from pathlib import Path
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Optional
 import urllib.request
 import urllib.error
 
@@ -69,6 +70,10 @@ APKEDITOR_BUILD_DIR = Path("app/build/libs")
 APKEDITOR_SOURCE_DIR = Path("libs/APKEditor")
 EXAMPLE_SRC_PATH = "path/to/your/local/file.txt"
 EXAMPLE_DEST_PATH = "assets/file.txt"
+ADB_CMD = "adb"
+ADB_INSTALL_CMD = "install"
+ADB_DEVICES_CMD = "devices"
+ADB_INSTALL_FLAGS = ["-t", "-r"]  # -t for test packages, -r for replace
 
 # Example JSON content
 EXAMPLE_JSON_CONTENT = {
@@ -120,6 +125,69 @@ def run_command(cmd: list, cwd: str = None, input_ str = None) -> subprocess.Com
         logging.error(f"Command failed with return code {e.returncode}")
         logging.error(f"Error output: {e.stderr}")
         raise
+
+def get_connected_devices() -> List[str]:
+    """Get list of connected ADB devices"""
+    try:
+        result = run_command([ADB_CMD, ADB_DEVICES_CMD])
+        lines = result.stdout.strip().split('\n')[1:]  # Skip header
+        devices = []
+        for line in lines:
+            if line.strip() and not line.startswith('*') and '\t' in line:
+                device_id = line.split('\t')[0]
+                devices.append(device_id)
+        return devices
+    except Exception as e:
+        logging.warning(f"Failed to get ADB devices: {e}")
+        return []
+
+def install_apk_on_device(apk_path: str, device_serial: Optional[str] = None) -> bool:
+    """Install APK on connected device(s)"""
+    try:
+        # Get connected devices
+        devices = get_connected_devices()
+        
+        if not devices:
+            logging.error("No ADB devices connected")
+            return False
+        
+        if device_serial:
+            # Install on specific device
+            if device_serial not in devices:
+                logging.error(f"Device {device_serial} not found in connected devices: {devices}")
+                return False
+            
+            logging.info(f"Installing APK on device {device_serial}...")
+            cmd = [ADB_CMD, "-s", device_serial, ADB_INSTALL_CMD] + ADB_INSTALL_FLAGS + [apk_path]
+            run_command(cmd)
+            logging.info("APK installed successfully")
+            return True
+        elif len(devices) == 1:
+            # Install on single device
+            logging.info(f"Installing APK on device {devices[0]}...")
+            cmd = [ADB_CMD, "-s", devices[0], ADB_INSTALL_CMD] + ADB_INSTALL_FLAGS + [apk_path]
+            run_command(cmd)
+            logging.info("APK installed successfully")
+            return True
+        else:
+            # Multiple devices - show instructions
+            print("\n" + "="*60)
+            print("MULTIPLE DEVICES DETECTED")
+            print("="*60)
+            print("Connected devices:")
+            for i, device in enumerate(devices, 1):
+                print(f"  {i}. {device}")
+            
+            print("\nTo install on a specific device, run:")
+            # Reconstruct the command with device serial
+            cmd_parts = [sys.argv[0]] + sys.argv[1:] + ["--install-on-device", "<device_serial>"]
+            print(f"  {' '.join(cmd_parts)}")
+            print("="*60)
+            return True
+            
+    except Exception as e:
+        logging.error(f"Failed to install APK: {e}")
+        return False
 
 def decompile_apk(apk_path: str, output_dir: str, apktool_path: Path) -> None:
     """Decompile the APK using apktool"""
@@ -359,6 +427,12 @@ def main():
     parser.add_argument("--build-apkeditor", action="store_true",
                        help="Build APKEditor from source")
     
+    # ADB installation options
+    parser.add_argument("--install", action="store_true",
+                       help="Install the final APK on connected device")
+    parser.add_argument("--install-on-device", 
+                       help="Install the final APK on a specific device by serial")
+    
     args = parser.parse_args()
     
     # Setup logging
@@ -394,6 +468,9 @@ def main():
         
         if success:
             logging.info(f"APKs merged successfully to {output_apk}")
+            # Handle ADB installation if requested
+            if args.install or args.install_on_device:
+                install_apk_on_device(output_apk, args.install_on_device)
             return 0
         else:
             logging.error("APK merging failed")
@@ -446,58 +523,4 @@ def main():
             generate_new_key = False
         else:
             keystore_path = temp_dir / DEFAULT_KEYSTORE
-            generate_new_key = True
-        
-        # Process steps
-        logging.info("Starting APK processing...")
-        
-        # 1. Decompile APK
-        decompile_apk(str(args.apk_path), str(decompiled_dir), apktool_path)
-        
-        # 2. Apply patches based on selected mode
-        if args.interactive:
-            interactive_file_modification(str(decompiled_dir))
-        else:
-            # Default to JSON patches
-            patches_file = Path(args.apk_file_patches)
-            if patches_file.exists():
-                patches = load_patches_from_json(patches_file)
-                apply_file_patches(str(decompiled_dir), patches)
-            else:
-                # Create example file if it doesn't exist
-                logging.warning(f"APK file patches file not found: {patches_file}")
-                create_example_patches_file(patches_file)
-                print(f"Created example patches file: {patches_file}")
-                print("Please edit this file to add your patches, then run the command again.")
-                print("Or use --interactive mode to manually modify files.")
-                return 1
-        
-        # 3. Compile modified APK
-        compile_apk(str(decompiled_dir), str(unaligned_apk), apktool_path)
-        
-        # 4. Align APK
-        align_apk(str(unaligned_apk), str(aligned_apk), zipalign_path)
-        
-        # 5. Generate key if needed
-        if generate_new_key:
-            generate_key(str(keystore_path), args.alias, args.password, KEYTOOL_CMD)
-        
-        # 6. Sign APK
-        sign_apk(str(aligned_apk), str(keystore_path), args.alias, args.password, apksigner_path)
-        
-        # 7. Move final APK to output location
-        shutil.move(str(aligned_apk), str(output_apk))
-        logging.info(f"Signed APK created at: {output_apk}")
-        
-    except Exception as e:
-        logging.error(f"Processing failed: {str(e)}")
-        return_code = 1
-    finally:
-        # Cleanup temporary files
-        logging.info("Cleaning up temporary files...")
-        cleanup_temp_files(str(temp_dir))
     
-    return return_code
-
-if __name__ == "__main__":
-    sys.exit(main())
