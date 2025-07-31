@@ -30,7 +30,7 @@ except ImportError:
         return False
 
 # Constants
-DEFAULT_TOOLS_DIR = "./tools"
+DEFAULT_TOOLS_DIR = Path("./tools")
 DEFAULT_ALIAS = "key0"
 DEFAULT_PASSWORD = "android"
 DEFAULT_LOG_FILE = "apk_processor.log"
@@ -44,11 +44,11 @@ ALIGNED_SUFFIX = "_aligned.apk"
 SIGNED_SUFFIX = "_signed.apk"
 DEFAULT_KEYSTORE = "release.keystore"
 KEY_DNAME = "CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown"
-DEFAULT_PATCHES_FILE = "apk_file_patches.json"
+DEFAULT_PATCHES_FILE = Path("apk_file_patches.json")
 APKTOOL_DOWNLOAD_URL = "https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar"
 DEFAULT_ANDROID_VERSION = "34"
-DEFAULT_SDK_ROOT = str(Path.home() / "android-sdk")
-APKEDITOR_JAR_DEFAULT = "libs/APKEditor/APKEditor.jar"
+DEFAULT_SDK_ROOT = Path.home() / "android-sdk"
+APKEDITOR_JAR_DEFAULT = Path("libs/APKEditor/APKEditor.jar")
 DEFAULT_MERGED_APK_NAME = "merged_apk.apk"
 KEYTOOL_CMD = "keytool"
 JAVA_CMD = "java"
@@ -65,8 +65,8 @@ UNSIGNED_FLAG = "-u"
 OUTPUT_FLAG = "-o"
 GRADLEW_UNIX = "gradlew"
 GRADLEW_WIN = "gradlew.bat"
-APKEDITOR_BUILD_DIR = "app/build/libs"
-APKEDITOR_SOURCE_DIR = "libs/APKEditor"
+APKEDITOR_BUILD_DIR = Path("app/build/libs")
+APKEDITOR_SOURCE_DIR = Path("libs/APKEditor")
 EXAMPLE_SRC_PATH = "path/to/your/local/file.txt"
 EXAMPLE_DEST_PATH = "assets/file.txt"
 
@@ -121,22 +121,22 @@ def run_command(cmd: list, cwd: str = None, input_ str = None) -> subprocess.Com
         logging.error(f"Error output: {e.stderr}")
         raise
 
-def decompile_apk(apk_path: str, output_dir: str, apktool_path: str) -> None:
+def decompile_apk(apk_path: str, output_dir: str, apktool_path: Path) -> None:
     """Decompile the APK using apktool"""
     logging.info(f"Decompiling APK: {apk_path}")
-    cmd = [JAVA_CMD, "-jar", apktool_path, APKTOOL_DECODE_CMD, apk_path, "-o", output_dir]
+    cmd = [JAVA_CMD, "-jar", str(apktool_path), APKTOOL_DECODE_CMD, apk_path, "-o", output_dir]
     run_command(cmd)
 
-def compile_apk(decompiled_dir: str, output_apk: str, apktool_path: str) -> None:
+def compile_apk(decompiled_dir: str, output_apk: str, apktool_path: Path) -> None:
     """Compile the modified sources back to APK"""
     logging.info(f"Compiling APK to: {output_apk}")
-    cmd = [JAVA_CMD, "-jar", apktool_path, APKTOOL_BUILD_CMD, decompiled_dir, "-o", output_apk]
+    cmd = [JAVA_CMD, "-jar", str(apktool_path), APKTOOL_BUILD_CMD, decompiled_dir, "-o", output_apk]
     run_command(cmd)
 
-def align_apk(input_apk: str, output_apk: str, zipalign_path: str) -> None:
+def align_apk(input_apk: str, output_apk: str, zipalign_path: Path) -> None:
     """Align the APK using zipalign"""
     logging.info(f"Aligning APK: {input_apk}")
-    cmd = [zipalign_path] + ZIPALIGN_FLAGS + [input_apk, output_apk]
+    cmd = [str(zipalign_path)] + ZIPALIGN_FLAGS + [input_apk, output_apk]
     run_command(cmd)
 
 def generate_key(keystore_path: str, alias: str, password: str, keytool_path: str) -> None:
@@ -162,11 +162,11 @@ def generate_key(keystore_path: str, alias: str, password: str, keytool_path: st
     
     run_command(cmd, input_data=keytool_input)
 
-def sign_apk(apk_path: str, keystore_path: str, alias: str, password: str, apksigner_path: str) -> None:
+def sign_apk(apk_path: str, keystore_path: str, alias: str, password: str, apksigner_path: Path) -> None:
     """Sign the APK using apksigner"""
     logging.info(f"Signing APK: {apk_path}")
     cmd = [
-        JAVA_CMD, "-jar", apksigner_path,
+        JAVA_CMD, "-jar", str(apksigner_path),
         APKSIGNER_SIGN_CMD,
         "--ks", keystore_path,
         "--ks-key-alias", alias,
@@ -194,7 +194,7 @@ def interactive_file_modification(decompiled_dir: str) -> None:
     print("You can now modify files in this directory.")
     input("Press Enter when you're done with modifications...")
 
-def load_patches_from_json(patches_file: str) -> List[Dict[str, str]]:
+def load_patches_from_json(patches_file: Path) -> List[Dict[str, str]]:
     """Load file patches from a JSON file"""
     try:
         with open(patches_file, 'r') as f:
@@ -243,7 +243,7 @@ def apply_file_patches(decompiled_dir: str, patches: List[Dict[str, str]]) -> No
         except Exception as e:
             logging.error(f"Failed to copy {src_path} to {dest_path}: {e}")
 
-def create_example_patches_file(patches_file: str) -> None:
+def create_example_patches_file(patches_file: Path) -> None:
     """Create an example patches JSON file"""
     try:
         with open(patches_file, 'w') as f:
@@ -297,7 +297,7 @@ def ensure_tools_available(tools_dir: Path, download_tools: bool = False,
         setup_sdk_logging()
         
         # Install SDK tools
-        sdk_root_path = Path(sdk_root) if sdk_root else Path(DEFAULT_SDK_ROOT)
+        sdk_root_path = Path(sdk_root) if sdk_root else DEFAULT_SDK_ROOT
         success = install_sdk_tools(
             sdk_root=sdk_root_path,
             android_version=android_version or DEFAULT_ANDROID_VERSION,
@@ -329,7 +329,7 @@ def ensure_tools_available(tools_dir: Path, download_tools: bool = False,
 def main():
     parser = argparse.ArgumentParser(description="APK Decompiler and Re-signer")
     parser.add_argument("apk_path", help="Path to the APK file to process")
-    parser.add_argument("--tools-dir", default=DEFAULT_TOOLS_DIR, help=f"Directory containing tools (default: {DEFAULT_TOOLS_DIR})")
+    parser.add_argument("--tools-dir", default=str(DEFAULT_TOOLS_DIR), help=f"Directory containing tools (default: {DEFAULT_TOOLS_DIR})")
     parser.add_argument("--log-file", help="Path to log file (if not provided, logging to file is disabled)")
     parser.add_argument("--keystore", help="Path to existing keystore (if not provided, a new one will be generated)")
     parser.add_argument("--alias", default=DEFAULT_ALIAS, help=f"Key alias (default: {DEFAULT_ALIAS})")
@@ -340,7 +340,7 @@ def main():
     # Patching options (mutually exclusive)
     patch_group = parser.add_mutually_exclusive_group()
     patch_group.add_argument("--interactive", action="store_true", help="Interactive file modification mode")
-    patch_group.add_argument("--apk-file-patches", default=DEFAULT_PATCHES_FILE, 
+    patch_group.add_argument("--apk-file-patches", default=str(DEFAULT_PATCHES_FILE), 
                            help=f"JSON file containing APK file patches (default: {DEFAULT_PATCHES_FILE})")
     
     # Tool installation options
@@ -381,7 +381,7 @@ def main():
         base_apk = args.apk_path
         unsigned_apks = args.merge_with
         output_apk = args.output or f"{Path(base_apk).stem}_{DEFAULT_MERGED_APK_NAME}"
-        apkeditor_jar = args.apkeditor_jar or APKEDITOR_JAR_DEFAULT
+        apkeditor_jar = args.apkeditor_jar or str(APKEDITOR_JAR_DEFAULT)
         
         logging.info("Merging APKs using APKEditor...")
         success = merge_apks(
@@ -452,37 +452,38 @@ def main():
         logging.info("Starting APK processing...")
         
         # 1. Decompile APK
-        decompile_apk(str(args.apk_path), str(decompiled_dir), str(apktool_path))
+        decompile_apk(str(args.apk_path), str(decompiled_dir), apktool_path)
         
         # 2. Apply patches based on selected mode
         if args.interactive:
             interactive_file_modification(str(decompiled_dir))
         else:
             # Default to JSON patches
-            if os.path.exists(args.apk_file_patches):
-                patches = load_patches_from_json(args.apk_file_patches)
+            patches_file = Path(args.apk_file_patches)
+            if patches_file.exists():
+                patches = load_patches_from_json(patches_file)
                 apply_file_patches(str(decompiled_dir), patches)
             else:
                 # Create example file if it doesn't exist
-                logging.warning(f"APK file patches file not found: {args.apk_file_patches}")
-                create_example_patches_file(args.apk_file_patches)
-                print(f"Created example patches file: {args.apk_file_patches}")
+                logging.warning(f"APK file patches file not found: {patches_file}")
+                create_example_patches_file(patches_file)
+                print(f"Created example patches file: {patches_file}")
                 print("Please edit this file to add your patches, then run the command again.")
                 print("Or use --interactive mode to manually modify files.")
                 return 1
         
         # 3. Compile modified APK
-        compile_apk(str(decompiled_dir), str(unaligned_apk), str(apktool_path))
+        compile_apk(str(decompiled_dir), str(unaligned_apk), apktool_path)
         
         # 4. Align APK
-        align_apk(str(unaligned_apk), str(aligned_apk), str(zipalign_path))
+        align_apk(str(unaligned_apk), str(aligned_apk), zipalign_path)
         
         # 5. Generate key if needed
         if generate_new_key:
             generate_key(str(keystore_path), args.alias, args.password, KEYTOOL_CMD)
         
         # 6. Sign APK
-        sign_apk(str(aligned_apk), str(keystore_path), args.alias, args.password, str(apksigner_path))
+        sign_apk(str(aligned_apk), str(keystore_path), args.alias, args.password, apksigner_path)
         
         # 7. Move final APK to output location
         shutil.move(str(aligned_apk), str(output_apk))
