@@ -1,4 +1,7 @@
 @echo off
+
+REM TOMER NOTE: CURRENTLY THIS IS NOT WORKING GREAT BECAUSE JAVA SHIT
+
 REM build.bat
 
 echo Initializing submodules...

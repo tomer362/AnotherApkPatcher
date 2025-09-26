@@ -1,5 +1,7 @@
 #!/bin/bash
 
+## TOMER NOTE: CURRENTLY THIS IS NOT WORKING GREAT BECAUSE JAVA SHIT
+
 echo "Initializing submodules..."
 git submodule update --init --recursive
 

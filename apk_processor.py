@@ -137,7 +137,7 @@ def process_apk(args, work_dir: Path, apk_path: Path, tools_dir: Optional[Path])
             logging.info("Attempting to locate SDK tools...")
             # Try to get paths from the SDK manager
             zp_sdk, ap_sdk = get_sdk_tool_paths(
-                sdk_root_path, args.android_version)
+                sdk_root_path, aFOrgs.android_version)
             if not zipalign_path_final and zp_sdk and zp_sdk.exists():
                 zipalign_path_final = zp_sdk
                 logging.info(f"Found zipalign in SDK: {zipalign_path_final}")
