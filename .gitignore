@@ -1,4 +1,7 @@
 *.log
 *.pyc
+*.isdig
+*.apk
+
 
 __pycache__/
