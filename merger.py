@@ -1,12 +1,12 @@
+# merger.py
+"""Functions for merging APKs using APKEditor."""
+
 import logging
 import subprocess
 import sys
 from pathlib import Path
 from typing import List, Optional
-
-# Constants
-DEFAULT_APKEDITOR_JAR = "libs/APKEditor/APKEditor.jar"
-DEFAULT_MERGED_APK_NAME = "merged_apk.apk"
+import config
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -36,61 +36,37 @@ def run_command(cmd: list, cwd: Optional[str] = None) -> subprocess.CompletedPro
 
 
 def build_apkeditor() -> bool:
-    """Build APKEditor from source"""
-    try:
-        apkeditor_dir = Path("libs/APKEditor")
-        if not apkeditor_dir.exists():
-            logging.error(
-                "APKEditor submodule not found. Please initialize submodules.")
-            return False
-
-        # Check if gradlew exists
-        gradlew = apkeditor_dir / \
-            ("gradlew.bat" if sys.platform == "win32" else "gradlew")
-        if not gradlew.exists():
-            logging.error("Gradle wrapper not found in APKEditor directory")
-            return False
-
-        # Make gradlew executable on Unix-like systems
-        if sys.platform != "win32":
-            import stat
-            current_permissions = gradlew.stat().st_mode
-            gradlew.chmod(current_permissions | stat.S_IEXEC)
-
-        # Build APKEditor
-        logging.info("Building APKEditor...")
-        build_cmd = [str(gradlew), "build"]
-
-        run_command(build_cmd, cwd=str(apkeditor_dir))
-
-        # Find the built JAR
-        jar_path = apkeditor_dir / "app" / "build" / "libs"
-        if not jar_path.exists():
-            logging.error("APKEditor build output directory not found")
-            return False
-
-        # Find the JAR file
-        jar_files = list(jar_path.glob("*.jar"))
-        if not jar_files:
-            logging.error("No JAR file found in APKEditor build output")
-            return False
-
-        # Copy the JAR to the root for easier access
-        target_jar = Path("libs/APKEditor/APKEditor.jar")
-        target_jar.write_bytes(jar_files[0].read_bytes())
-
-        logging.info("APKEditor built successfully")
-        return True
-    except Exception as e:
-        logging.error(f"Failed to build APKEditor: {e}")
-        return False
+    """Build APKEditor from source (stub implementation)"""
+    # Placeholder for building APKEditor from source
+    # This would involve running Gradle commands in the libs/APKEditor directory
+    logging.info("Building APKEditor from source is not implemented in this stub.")
+    # Example logic (uncomment and adapt if needed):
+    # try:
+    #     apkeditor_dir = Path("libs/APKEditor")
+    #     if not apkeditor_dir.exists():
+    #         logging.error("APKEditor submodule not found.")
+    #         return False
+    #     gradlew = apkeditor_dir / ("gradlew.bat" if sys.platform == "win32" else "gradlew")
+    #     if not gradlew.exists():
+    #         logging.error("Gradle wrapper not found.")
+    #         return False
+    #     if sys.platform != "win32":
+    #         import stat
+    #         gradlew.chmod(gradlew.stat().st_mode | stat.S_IEXEC)
+    #     run_command([str(gradlew), "build"], cwd=str(apkeditor_dir))
+    #     # Find and copy the built JAR...
+    #     logging.info("APKEditor built successfully.")
+    #     return True
+    # except Exception as e:
+    #     logging.error(f"Failed to build APKEditor: {e}")
+    return False # Indicate build not performed
 
 
 def merge_apks(
     base_apk: str,
     unsigned_apks: List[str],
     output_apk: str,
-    apkeditor_jar: str = DEFAULT_APKEDITOR_JAR,
+    apkeditor_jar: str = str(config.APKEDITOR_JAR_DEFAULT),
     verbose: bool = False
 ) -> bool:
     """
@@ -108,15 +84,19 @@ def merge_apks(
     """
     setup_logging(verbose)
 
-    # Check if APKEditor JAR exists, if not try to build it
+    # Check if APKEditor JAR exists
     jar_path = Path(apkeditor_jar)
     if not jar_path.exists():
-        logging.warning(f"APKEditor JAR not found at {apkeditor_jar}")
+        logging.warning(f"APKEditor JAR not found at {jar_path}")
         logging.info("Attempting to build APKEditor...")
         if not build_apkeditor():
             logging.error("Failed to build APKEditor")
             return False
-        logging.info("APKEditor built successfully")
+        # Re-check if build created the JAR
+        if not jar_path.exists():
+             logging.error("APKEditor JAR still not found after attempted build.")
+             return False
+        logging.info("APKEditor JAR located after build attempt.")
 
     # Verify base APK exists
     base_apk_path = Path(base_apk)
@@ -139,9 +119,9 @@ def merge_apks(
 
     try:
         # Run APKEditor merge command
-        # APKEditor.jar merge -i base.apk -u unsigned1.apk -u unsigned2.apk -o output.apk
+        # java -jar APKEditor.jar merge -i base.apk -u unsigned1.apk -u unsigned2.apk -o output.apk
         merge_cmd = [
-            "java", "-jar", str(jar_path),
+            config.JAVA_BINARY_PATH, "-jar", str(jar_path),
             "merge",
             "-i", str(base_apk_path),
             "-o", str(output_apk)
@@ -166,22 +146,22 @@ def main():
 
     parser = argparse.ArgumentParser(description="APK Merger using APKEditor")
     parser.add_argument("base_apk", help="Path to the base APK")
-    parser.add_argument("unsigned_apk", nargs="+",
-                        help="Paths to unsigned APKs to merge")
-    parser.add_argument("-o", "--output", default=DEFAULT_MERGED_APK_NAME,
-                        help=f"Output APK path (default: {DEFAULT_MERGED_APK_NAME})")
-    parser.add_argument("--apkeditor-jar", default=DEFAULT_APKEDITOR_JAR,
-                        help=f"Path to APKEditor JAR (default: {DEFAULT_APKEDITOR_JAR})")
-    parser.add_argument("--verbose", action="store_true",
-                        help="Enable verbose logging")
+    parser.add_argument("unsigned_apk", nargs="+", help="Paths to unsigned APKs to merge")
+    parser.add_argument("-o", "--output", default=config.DEFAULT_MERGED_APK_NAME,
+                       help=f"Output APK path (default: {config.DEFAULT_MERGED_APK_NAME})")
+    parser.add_argument("--apkeditor-jar", default=str(config.APKEDITOR_JAR_DEFAULT),
+                       help=f"Path to APKEditor JAR file (default: {config.APKEDITOR_JAR_DEFAULT})")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     parser.add_argument("--build", action="store_true",
-                        help="Build APKEditor from source before merging")
+                       help="Build APKEditor from source")
 
     args = parser.parse_args()
 
+    # Setup logging based on verbosity
+    setup_logging(args.verbose)
+
     # Build APKEditor if requested
     if args.build:
-        setup_logging(args.verbose)
         if not build_apkeditor():
             return 1
 
@@ -195,7 +175,6 @@ def main():
     )
 
     return 0 if success else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -1,0 +1,8 @@
+{
+  "patch": [
+    {
+      "src": "path/to/your/local/file.txt",
+      "dest": "assets/file.txt"
+    }
+  ]
+}

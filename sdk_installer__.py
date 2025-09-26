@@ -16,6 +16,7 @@ import urllib.error
 
 # Constants
 DEFAULT_ANDROID_SDK_ROOT = Path.home() / "android-sdk"
+# DEFAULT_TOOLS_DIR is kept for compatibility but not used for copying in this version
 DEFAULT_TOOLS_DIR = "./tools"
 COMMANDLINE_TOOLS_URL = "https://dl.google.com/android/repository/commandlinetools-{}-9477386_latest.zip"
 LATEST_ANDROID_VERSION = "34.0.0"  # Android 14 (API 34)
@@ -63,69 +64,32 @@ def extract_zip(file_path: Path, extract_to: Path) -> None:
         raise
 
 
-def find_build_tools(sdk_root: Path, android_version: str) -> Optional[Path]:
-    """Find the build-tools directory for the given version."""
-    # First, try the exact version provided
-    build_tools_dir = sdk_root / "build-tools" / android_version
-    if build_tools_dir.exists():
-        return build_tools_dir
-
-    # Fallback: try major.minor.0 or major.0.0 format
-    try:
-        parts = android_version.split('.')
-        if len(parts) >= 1:
-            major = parts[0]
-            # Try major.0.0
-            fallback_dir1 = sdk_root / "build-tools" / f"{major}.0.0"
-            if fallback_dir1.exists():
-                return fallback_dir1
-            # Try major.minor.0 if minor exists
-            if len(parts) >= 2:
-                minor = parts[1]
-                fallback_dir2 = sdk_root / "build-tools" / f"{major}.{minor}.0"
-                if fallback_dir2.exists():
-                    return fallback_dir2
-    except Exception as e:
-        logging.warning(f"Error during build-tools fallback search: {e}")
-
-    logging.error(
-        f"Build tools directory not found for version {android_version} in {sdk_root}")
-    return None
-
-
-def get_sdk_tool_paths(sdk_root: Path, android_version: str) -> Tuple[Optional[Path], Optional[Path]]:
+def get_sdk_tool_directories(sdk_root: Path, android_version: str) -> Tuple[Optional[Path], Optional[Path]]:
     """
-    Get paths to zipalign and apksigner.jar within the installed SDK.
+    Get paths to the build-tools and platform-tools directories within the installed SDK.
+
+    Args:
+        sdk_root: The root directory of the Android SDK.
+        android_version: The specific Android version (e.g., '34.0.0') for build tools.
 
     Returns:
-        Tuple of (zipalign_path, apksigner_jar_path) or (None, None) if not found.
+        A tuple containing (build_tools_directory_path, platform_tools_directory_path).
+        If a directory is not found, its value will be None.
     """
     build_tools_dir = find_build_tools(sdk_root, android_version)
-    if not build_tools_dir:
-        return None, None
+    platform_tools_dir = sdk_root / "platform-tools"
 
-    # Find zipalign
-    zipalign_path = build_tools_dir / "zipalign"
-    # Check for .exe on Windows
-    if not zipalign_path.exists() and platform.system().lower() == "windows":
-        zipalign_path = build_tools_dir / "zipalign.exe"
+    if not build_tools_dir or not build_tools_dir.exists():
+        logging.warning(
+            f"Build tools directory not found or invalid: {build_tools_dir}")
+        build_tools_dir = None
 
-    # Find apksigner.jar
-    apksigner_jar_path = None
-    for file in build_tools_dir.glob("*.jar"):
-        if "apksigner" in file.name.lower():
-            apksigner_jar_path = file
-            break
+    if not platform_tools_dir.exists():
+        logging.warning(
+            f"Platform tools directory not found: {platform_tools_dir}")
+        platform_tools_dir = None
 
-    # Validation
-    if not zipalign_path.exists():
-        logging.warning(f"zipalign not found in {build_tools_dir}")
-        zipalign_path = None
-    if not apksigner_jar_path or not apksigner_jar_path.exists():
-        logging.warning(f"apksigner.jar not found in {build_tools_dir}")
-        apksigner_jar_path = None
-
-    return zipalign_path, apksigner_jar_path
+    return build_tools_dir, platform_tools_dir
 
 
 def run_command(cmd: list, cwd: Optional[str] = None, max_retries: int = 2) -> subprocess.CompletedProcess:
@@ -165,20 +129,21 @@ def run_command(cmd: list, cwd: Optional[str] = None, max_retries: int = 2) -> s
 def install_sdk_tools(
     sdk_root: Path,
     android_version: str = LATEST_ANDROID_VERSION,
+    # tools_dir parameter is kept for compatibility but not used for copying tools
     tools_dir: Optional[Path] = None,
     keep_cmdline: bool = True
 ) -> bool:
     """
-    Install Android SDK tools
+    Install Android SDK tools directly into the SDK structure.
 
     Args:
-        sdk_root: Path to Android SDK root directory
-        android_version: Android API version to install build tools for (format: X.X.X)
-        tools_dir: Directory to copy final tools to (optional) - Note: tools are used in place now.
-        keep_cmdline: Whether to keep commandline tools for future use
+        sdk_root: Path to Android SDK root directory (will be resolved to absolute).
+        android_version: Android API version to install build tools for (format: X.X.X).
+        tools_dir: Deprecated. Tools are used in place. Kept for compatibility.
+        keep_cmdline: Whether to keep commandline tools for future use.
 
     Returns:
-        True if installation successful, False otherwise
+        True if installation successful, False otherwise.
     """
     try:
         # Ensure sdk_root is absolute
@@ -255,7 +220,7 @@ def install_sdk_tools(
         logging.info(
             f"Installing build tools for Android API {android_version}...")
 
-        # Extract major version for sdkmanager (e.g., 34.0.0 -> 34)
+        # Use the full android_version string for the package name
         install_cmd = [
             str(cmdline_bin / ("sdkmanager.bat" if platform.system()
                 == "Windows" else "sdkmanager")),
@@ -276,19 +241,109 @@ def install_sdk_tools(
         # Use the enhanced run_command with retries
         run_command(platform_cmd, cwd=str(sdk_root))
 
-        # Note about tools being used in place
-        logging.info(
-            "SDK tools installed successfully and will be used directly from the SDK.")
+        # Note: Tools are now installed in place within the SDK.
+        # The patcher.py will locate the specific executables.
         if tools_dir:
             logging.info(
-                "The 'tools_dir' parameter is deprecated for copying SDK tools. Tools are used in place.")
+                "Note: The 'tools_dir' parameter is deprecated for copying SDK tools. Tools are used in place.")
 
+        logging.info("SDK tools installation completed successfully.")
         return True
 
     except Exception as e:
         logging.error(f"SDK tools installation failed: {e}")
         return False
 
+
+def find_build_tools(sdk_root: Path, android_version: str) -> Optional[Path]:
+    """Find the build-tools directory for the given version."""
+    # First, try the exact version provided
+    build_tools_dir = sdk_root / "build-tools" / android_version
+    if build_tools_dir.exists():
+        return build_tools_dir
+
+    # Fallback: try major.minor.0 or major.0.0 format
+    try:
+        parts = android_version.split('.')
+        if len(parts) >= 1:
+            major = parts[0]
+            # Try major.0.0
+            fallback_dir1 = sdk_root / "build-tools" / f"{major}.0.0"
+            if fallback_dir1.exists():
+                return fallback_dir1
+            # Try major.minor.0 if minor exists
+            if len(parts) >= 2:
+                minor = parts[1]
+                fallback_dir2 = sdk_root / "build-tools" / f"{major}.{minor}.0"
+                if fallback_dir2.exists():
+                    return fallback_dir2
+    except Exception as e:
+        logging.warning(f"Error during build-tools fallback search: {e}")
+
+    logging.error(
+        f"Build tools directory not found for version {android_version} in {sdk_root}")
+    return None
+
+
+def get_sdk_build_tool_path(tool_name: Path, sdk_root: Path, android_version: str) -> Optional[Path]:
+    """
+    Get path to a downloaded tool in the sdk build tools, searching all subdirectories.
+
+    Args:
+        tool_name: Exact name of the tool to find
+        sdk_root: Path to Android SDK root directory
+        android_version: Android API version to find build tools for
+
+    Returns:
+        Tool's path or None if not found.
+    """
+    build_tools_dir = find_build_tools(sdk_root, android_version)
+    if not build_tools_dir:
+        return None
+
+    # Search recursively in build_tools_dir for the exact tool name
+    try:
+        for file_path in build_tools_dir.rglob(str(tool_name)):
+            if file_path.is_file():
+                return file_path
+    except Exception as e:
+        logging.warning(f"Error while searching for {tool_name}: {e}")
+
+    logging.warning(f"{tool_name} not found in {build_tools_dir} or its subdirectories")
+    return None
+
+
+def get_sdk_tool_paths(sdk_root: Path, android_version: str) -> Tuple[Optional[Path], Optional[Path]]:
+    """
+    Locate zipalign and apksigner.jar within the installed SDK.
+
+    Args:
+        sdk_root: Path to the Android SDK root.
+        android_version: The Android version string (e.g., '34.0.0').
+
+    Returns:
+        A tuple containing (path_to_zipalign, path_to_apksigner_jar).
+        If a tool is not found, its value will be None.
+    """
+    build_tools_dir = find_build_tools(sdk_root, android_version)
+    if not build_tools_dir:
+        return None, None
+
+    # Find zipalign
+    zipalign_exe = "zipalign.exe" if platform.system().lower() == "windows" else "zipalign"
+    zipalign_path = build_tools_dir / zipalign_exe
+    if not zipalign_path.exists():
+        # Fallback check without extension logic if needed
+        zipalign_path = None
+
+    # Find apksigner.bat
+    apksigner_path = None
+    for bat_file in build_tools_dir.glob("*.bat"):
+        if "apksigner" in bat_file.name.lower():
+            apksigner_path = bat_file
+            break
+
+    return zipalign_path, apksigner_path
 
 def main():
     parser = argparse.ArgumentParser(description="Android SDK Tools Installer")
@@ -297,7 +352,7 @@ def main():
     parser.add_argument("--android-version", "-V", default=LATEST_ANDROID_VERSION,
                         help=f"Android API version for build tools (default: {LATEST_ANDROID_VERSION})")
     parser.add_argument("--tools-dir", "-t",
-                        help="Directory for compatibility (tools are used in place now)")
+                        help="Deprecated: Directory for compatibility (tools are used in place now)")
     parser.add_argument("--no-keep-cmdline", "-n", action="store_true",
                         help="Keep commandline tools after installation (default: True)")
     parser.add_argument("--verbose", "-v", action="store_true",
@@ -330,7 +385,8 @@ def main():
         sdk_root=sdk_root,
         android_version=args.android_version,
         # tools_dir is no longer used for copying
-        keep_cmdline=not args.no_keep_cmdline  # Invert flag for clarity
+        # Invert flag for clarity: default True means keep
+        keep_cmdline=not args.no_keep_cmdline
     )
 
     return 0 if success else 1
